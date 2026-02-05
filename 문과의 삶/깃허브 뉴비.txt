@@ -1,0 +1,5 @@
+코드 수정했으면
+git add .
+git commit -m "뭐 했는지 메모"
+git push
+
