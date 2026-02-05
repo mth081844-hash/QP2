@@ -4,6 +4,6 @@ data/
 *.zip
 *.log
 .env
-API_Key.txt
+**/API Key.txt
 __pycache__/
 .ipynb_checkpoints/
