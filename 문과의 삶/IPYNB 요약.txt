@@ -1,0 +1,881 @@
+00_DataLoader_First.ipynb	첫번째 데이터 로더
+01_Dataloader_Finnhub_Earnings.ipynb	핀헙 단기 숔 확인용(안씀이제는)
+01_DataLoader_Macro.ipynb	거시변수 및 S&P500변화로 레짐 판단용 (얘도 업데이트 포함)
+01_DataLoader_Quarterly.ipynb	분기별재무지표 및 주가 (업데이트 포함)
+01_ML_Test.ipynb	ML실험실, 별로 의미는 없음
+02_A_test_01.ipynb	A를 위한 실험1
+02_A_test_02.ipynb	A를 위한 실험2
+02_A.ipynb	팩터A 최종본
+02_D_test_01.ipynb	D를 위한 실험1
+02_D_test_02.ipynb	D를 위한 실험2
+02_D.ipynb	팩터D 최종본	개선점: D-2
+02_S_Announcement_test_01.ipynb	실적발표 직전 모멘텀 유지 테스트
+03_CarryTrade.ipynb	캐리트레이드 레짐 분석용
+04_MachingeLearning_Fail_limitedData.ipynb	Finnhub 제공 1년 데이터 사용, FinnBERT사용, 데이터 부족인지 상관관계 발견 실패
+04_ML_GDELT.ipynb	지디로 22년도부터 뉴스 자료 제목 파씽, FinnBERT로 긍정부정 판단 후 결정  <- 진행중
+ ㄴ업데이트 추가해야함. 
+
+
+=============================================================================
+📁 01_DataLoader_Quarterly.ipynb 요약
+=============================================================================
+
+[노트북 목적]
+SEC EDGAR companyfacts에서 분기(Q1~Q4) 재무 데이터 추출
+Yahoo Finance 주가 데이터 증분 업데이트
+
+=============================================================================
+[셀 구조]
+=============================================================================
+
+셀 1: 환경 설정
+   - QP2_ROOT, DATA_DIR, RAW_DIR, INTERIM_DIR, META_DIR
+   - save_parquet(), load_json_gz()
+   - master (sp500_universe) 로드
+
+셀 2: fundamentals_quarterly 전체 파싱 (UNION 방식)
+   - SEC companyfacts에서 Q1~Q4 데이터만 추출
+   - 핵심: 모든 후보 태그에서 데이터 합치고 (fy, fp) 중복 제거
+   - 산출물: data/interim/fundamentals_quarterly.parquet
+
+셀 3: fundamentals_quarterly 증분 업데이트
+   - 체크포인트 기반 변경 파일만 재파싱
+   - 산출물: data/interim/quarterly_update_checkpoint.json
+
+셀 4: Yahoo 주가 증분 업데이트
+   - 종목별 마지막 날짜 이후만 다운로드
+   - Wide/Long 패널 재생성
+   - 산출물: yahoo_adjclose_wide.parquet, yahoo_prices_long.parquet
+
+셀 5: 요약
+
+=============================================================================
+[핵심 해결: UNION 방식]
+=============================================================================
+
+문제: 회사마다/연도마다 다른 태그 사용
+   - AAPL Revenue: 2009~2018 SalesRevenueNet → 2019~ RevenueFromContractWithCustomer...
+   - 금융주: InterestAndDividendIncomeOperating 사용
+
+해결: 첫 번째 매칭 태그만 사용 → 모든 후보 태그 UNION
+   - 각 태그에서 데이터 수집
+   - pd.concat으로 합치기
+   - (fy, fp) 기준 중복 제거 (filed 최신 우선)
+
+=============================================================================
+[NaN 비율 개선]
+=============================================================================
+
+   항목              이전      이후
+   Revenue           41.0%     2.8%
+   CapEx            100.0%    29.9%
+   CFO               12.2%     0.2%
+   NetIncomeLoss     11.2%     0.2%
+   Assets             0.1%     0.1%
+   Liabilities        5.1%     5.1%
+   StockholdersEquity 7.0%     0.6%
+
+   * CapEx 29.9%: 보고 안 하는 기업 많음 (불가피)
+   * Liabilities 5.1%: 초기 연도(2009~) 데이터 부족
+
+=============================================================================
+[STD_MAP_Q 태그 목록]
+=============================================================================
+
+Assets:
+   - Assets
+
+Liabilities:
+   - Liabilities
+   - (fallback: LiabilitiesCurrent + LiabilitiesNoncurrent)
+
+StockholdersEquity:
+   - StockholdersEquity
+   - StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest
+
+NetIncomeLoss:
+   - NetIncomeLoss
+   - ProfitLoss
+   - NetIncomeLossAvailableToCommonStockholdersBasic
+   - NetIncomeLossAvailableToCommonStockholdersDiluted
+
+CFO:
+   - NetCashProvidedByUsedInOperatingActivities
+   - NetCashProvidedByUsedInOperatingActivitiesContinuingOperations
+
+CapEx:
+   - PaymentsToAcquirePropertyPlantAndEquipment
+   - CapitalExpenditures
+   - PaymentsToAcquireOtherPropertyPlantAndEquipment
+
+Revenue:
+   - Revenues
+   - RevenueFromContractWithCustomerExcludingAssessedTax
+   - RevenueFromContractWithCustomerIncludingAssessedTax
+   - SalesRevenueNet
+   - SalesRevenueGoodsNet
+   - SalesRevenueServicesNet
+   - RevenuesNetOfInterestExpense
+   - RevenuesFromExternalCustomers
+   - InterestAndDividendIncomeOperating (금융주)
+   - InterestIncomeExpenseNet (금융주)
+
+=============================================================================
+[산출물]
+=============================================================================
+
+   data/interim/fundamentals_quarterly.parquet
+      - 22,127 rows, 503 tickers
+      - fy 2009~2026
+      - 컬럼: cik, fy, fp, end, filed, Assets, Liabilities, CFO,
+              NetIncomeLoss, Revenue, StockholdersEquity, CapEx,
+              ticker_yahoo, security_name
+
+   data/interim/yahoo_adjclose_wide.parquet
+      - 16,127 dates × 503 tickers
+      - 기간: 1962-01-02 ~ 2026-01-29
+
+   data/interim/yahoo_prices_long.parquet
+      - 4,343,487 rows (date, ticker, adj_close)
+
+   data/interim/quarterly_update_checkpoint.json
+      - SEC 파일 mtime 기록 (증분 업데이트용)
+
+=============================================================================
+[사용법]
+=============================================================================
+
+   첫 실행: 셀 1 → 셀 2 → 셀 4 (전체 생성)
+   이후:   셀 1 → 셀 3 → 셀 4 (증분 업데이트)
+
+   또는: C:\QP2\UPDATE.bat 실행 (원클릭 업데이트)
+
+=============================================================================
+[관련 파일]
+=============================================================================
+
+   01_data_loader.ipynb
+      - 초기 세팅용 (SEC 다운로드, 연간 재무, 유니버스 생성)
+      - 삭제 금지! 새 환경 세팅 시 필요
+
+   00_DataLoader_Finnhub_Earnings.ipynb
+      - Earnings Surprise 수집 (fast_catalyst)
+      - ⚠️ 1.5년치만 (무료 API 한계)
+
+   scripts/update_all.py + UPDATE.bat
+      - 원클릭 업데이트 실행기
+
+=============================================================================
+
+
+
+
+
+
+=============================================================================
+📁 02_A_test_02 요약 (최종 업데이트)
+=============================================================================
+
+[노트북 목적]
+A팩터 (Value) 검증 — "저평가" 가설 테스트 및 탈락 결론
+
+=============================================================================
+[셀 구조]
+=============================================================================
+
+셀 1: 환경/경로/유틸
+   - QP2_ROOT, PATHS, winsorize(), zscore_by_date()
+   - LAG_DAYS 설정
+
+셀 2: 데이터 로드 (분기 버전)
+   - fund_q: 분기 재무 (fundamentals_quarterly.parquet)
+   - px_wide, px_m, ret_1m: Yahoo 주가/수익률
+   - effective_date = filed + LAG_DAYS
+
+셀 3: Value 신호 (초기 버전 — 이후 수정됨)
+   - bm = Equity / Price (❌ 잘못된 정의)
+
+셀 4: Catalyst 신호 (초기 버전)
+   - ROE 변화 + 부채비율 개선 (QoQ)
+
+셀 5: 백테스트 (초기 버전)
+   - Value Only vs A-Integrated
+   - 결과: 벤치마크한테 짐 (전 구간)
+
+셀 6: 레짐별 검증 (수동 정의 레짐)
+   - 5개 유리한 레짐 + 전체 기간 테스트
+   - 결과: 유리한 레짐에서도 벤치마크한테 짐
+
+셀 7~8: Market Cap 데이터 확인
+   - Yahoo에 Shares Outstanding 없음 확인
+   - SEC companyfacts에서 CommonStockSharesOutstanding 발견
+
+셀 9: Shares Outstanding 파싱 + MarketCap 계산
+   - 핵심 발견: 기존 B/M vs 새 B/M 상관계수 = -0.0009
+   - 완전히 다른 신호였음!
+
+셀 10: Value 신호 재계산 (bm_proper) + 레짐별 백테스트
+   - bm_proper = Equity / MarketCap (제대로 된 정의)
+   - 결과: 전 구간 Sharpe 상승, 6개 레짐 전부 벤치마크 상회 (수동 정의 레짐 기준)
+
+셀 11: 시각화
+   - 누적수익률 차트 + Sharpe 비교 바 차트
+
+셀 12: Catalyst 개선 시도
+   - V1_YoY기본, V2_YoY연속가산, V3_YoY_MA2
+   - 결과: 모든 버전에서 Value Only 대비 성과 저하
+
+셀 12-1: Catalyst 폐기 결론
+   - Catalyst = 알파 없음, 오히려 노이즈
+
+셀 13: LAG 민감도 테스트 (전체 기간)
+   - LAG = 0, 30, 45, 60, 90일 비교
+
+셀 13-2: 레짐별 LAG 민감도 (수동 정의 레짐)
+
+셀 13-3: LAG 결론
+   - LAG=60일 채택 (타협점)
+
+셀 14: 유니버스 변경 검토
+
+셀 15: (이전 대화창 내용)
+
+셀 16: 새 레짐 기반 Value 테스트 ⭐ NEW
+   - 01_DataLoader_Macro에서 생성한 regime_v2 사용
+   - LAG = 30, 45, 60, 90일 전부 테스트
+   - 결과: 거의 모든 레짐에서 Value가 BM한테 짐
+
+셀 16-1: S&P500 지수 vs EW BM 비교 ⭐ NEW
+   - 상관계수: 0.9439 (BM 정의 문제 아님 확인)
+
+셀 17: A팩터 최종 결론 주석 ⭐ NEW
+   - A-1 (단순 저평가): 탈락
+   - A-3 (저평가 × 촉매): 재정의 필요
+
+=============================================================================
+[핵심 발견 — 최종]
+=============================================================================
+
+1. B/M 정의 오류 수정
+   ❌ 기존: Equity / Price → 쓰레기 신호
+   ✅ 수정: Equity / MarketCap → 진짜 Value 신호
+
+2. 수동 정의 레짐 vs 자동 분류 레짐 결과 차이
+   - 수동 정의 (GFC_Recovery 등): Value 승리
+   - 자동 분류 (regime_v2): Value 패배
+   - 원인: 수동 정의는 "유리한 구간"만 cherry-pick 했을 가능성
+
+3. 자동 레짐 분류 결과 (regime_v2)
+   - 0_Neutral: Value ≈ BM (비슷)
+   - 2_Recovery_Early: Value << BM (BM 압승)
+   - 3_Contraction: Value < BM
+   - 4_Recovery_Late: Value < BM
+   - 5_Expansion: Value < BM
+   - 6_Peak: Value ≈ BM
+
+4. A-1 (단순 저평가) 실패 원인
+   - 2010년대 이후 Value 프리미엄 약화
+   - 회복기 역설: 급반등 시 시장 베타 > Value 알파
+   - "싸다"만으로는 부족, 촉매 필요
+
+=============================================================================
+[A팩터 최종 결론]
+=============================================================================
+
+   A-1 (단순 저평가): ❌ 탈락
+   
+   이유:
+   - 자동 레짐 분류 기준, 거의 모든 레짐에서 BM한테 짐
+   - EW vs S&P500 지수 상관계수 0.94 → BM 정의 문제 아님
+   - Value 프리미엄 자체가 약화된 시대
+
+   다음 단계:
+   - A-3 (저평가 × 촉매) 재정의
+   - Value를 "필터"로만 사용
+   - Catalyst (ΔROE, ΔLeverage, ΔCF)를 메인으로
+
+=============================================================================
+[A-3 재정의 방향 (다음 노트북)]
+=============================================================================
+
+   새로운 전략:
+   1단계: Value 필터 — B/M 상위 50% (싼 놈만 후보)
+   2단계: Catalyst 스코어 — ΔROE, ΔLeverage, ΔCashFlow
+   3단계: Catalyst 상위 N개 선정
+
+   핵심 변화:
+   기존: Value(메인) + Catalyst(보조)
+   새로: Catalyst(메인) + Value(필터)
+
+   노트북: 02_Factor_05_A3_catalyst.ipynb (새로 생성 예정)
+
+=============================================================================
+[관련 파일]
+=============================================================================
+
+   레짐 데이터 (01_DataLoader_Macro에서 생성):
+   - data/interim/regime_indicators_combined.parquet
+     컬럼: regime_v2, regime_v3, regime_macro, regime_combined, regime_simple
+   - data/interim/macro_indicators.parquet
+   - data/interim/market_regime_indicators.parquet
+
+   재무 데이터:
+   - data/interim/fundamentals_quarterly.parquet
+
+   주가 데이터:
+   - data/interim/yahoo_adjclose_wide.parquet
+
+=============================================================================
+[변수명 목록 (다음 대화창 유지)]
+=============================================================================
+
+   레짐 관련:
+   - regime_v2, regime_v3, regime_macro, regime_combined, regime_simple
+
+   재무/주가:
+   - fund_q, px_wide, px_m, ret_1m
+
+   유틸:
+   - winsorize(), zscore_by_date()
+   - LAG_DAYS, TOP_N
+
+=============================================================================
+[이 노트북 상태]
+=============================================================================
+
+   상태: 완료 (A-1 탈락 결론)
+   다음: 02_Factor_05_A3_catalyst.ipynb에서 A-3 재정의
+
+=============================================================================
+
+
+=============================================================================
+📁 02_A.ipynb 요약
+=============================================================================
+
+[노트북 목적]
+A-3 팩터 검증 — "저평가 × 촉매" 가설 테스트
+
+[전략 정의]
+- 1단계: B/M 상위 50% 필터 (Value)
+- 2단계: Catalyst 스코어 (ΔROE + ΔLeverage + ΔCashFlow)
+- 3단계: Catalyst 상위 30개 선정
+
+=============================================================================
+[셀 구조]
+=============================================================================
+
+셀 1: 환경/경로/유틸
+   - QP2_ROOT, PATHS, winsorize(), zscore_by_date()
+   - LAG_DAYS=60, TOP_N=30, VALUE_FILTER_PCT=0.5
+
+셀 2: 데이터 로드
+   - fund_q, px_wide, px_m, ret_1m, regime_m
+   - effective_date = filed + LAG_DAYS
+
+셀 2-1: 시가총액 생성
+   - SEC companyfacts에서 Shares Outstanding 파싱
+   - 산출물: data/interim/mktcap_monthly.parquet
+
+셀 3: Value 필터
+   - B/M = Equity / MarketCap
+   - 상위 50% → is_cheap = True
+
+셀 4: Catalyst 스코어
+   - ΔROE, ΔLeverage (부호반전), ΔCashFlow
+   - Cross-sectional z-score → catalyst_z
+
+셀 5: 최종 신호 생성
+   - Value 필터 통과 + Catalyst Top N 선정
+
+셀 6: 백테스트 (전체 기간)
+   - A-3 vs EW Benchmark
+   - 결과: CAGR 17.0% vs 16.9% (거의 동등)
+
+셀 7: 레짐별 백테스트
+   - Neutral: +36.1%p 초과 (압승)
+   - Recovery_Late: +5.5%p (승)
+   - Contraction: -22.5%p (대패)
+   - Expansion: -21.5%p (대패)
+
+셀 8: LAG 민감도 테스트 (전체 기간)
+   - LAG=45일 최적 (Sharpe 1.15, 초과수익 +3.3%)
+
+셀 9: (기존 결론 — 셀 10 추가로 업데이트됨)
+
+셀 10: 레짐별 LAG 민감도 테스트
+   - Neutral: 45일 최적 (Sharpe 1.28)
+   - Contraction: 45일 (Sharpe -0.07, 어차피 사용 안함)
+   - Recovery_Late: 30일 최적 (Sharpe 2.15) ← 유일하게 다름
+   - Expansion: 45일 (Sharpe 1.15, 어차피 사용 안함)
+
+셀 11: 최종 결론 주석
+
+=============================================================================
+[핵심 결과]
+=============================================================================
+
+전체 기간:
+   A-3: CAGR 17.0%, Sharpe 0.99, MaxDD -26.0%
+   BM:  CAGR 16.9%, Sharpe 1.10, MaxDD -23.6%
+   → 거의 동등
+
+레짐별 승률: 2/4
+   ✅ Neutral, Recovery_Late
+   ❌ Contraction, Expansion
+
+전체 기간 최적 LAG: 45일
+
+레짐별 최적 LAG:
+   - Neutral: 45일
+   - Recovery_Late: 30일 (낙관론 확산 → 정보 반영 빨라짐)
+   - 나머지: 45일 (또는 사용 안함)
+
+=============================================================================
+[최종 판정]
+=============================================================================
+
+A-3 (저평가 × 촉매): ⚠️ 조건부 유효
+
+사용 조건:
+- 레짐 = Neutral 또는 Recovery_Late일 때만 사용
+- LAG 설정:
+   - 기본: 45일
+   - Recovery_Late: 30일 (선택적 최적화)
+   - 단순화: 45일 고정해도 큰 손해 없음
+
+다음 단계:
+- 멀티팩터 조합에서 "횡보장 전용" 모듈로 활용
+- 다른 팩터 (B, C, D 타입) 검증 진행
+
+=============================================================================
+[산출물]
+=============================================================================
+
+   data/interim/mktcap_monthly.parquet
+      - 시가총액 (Price × Shares Outstanding)
+      - 205 months, 503 tickers
+
+=============================================================================
+[변수명 목록 — 다음 대화창 유지]
+=============================================================================
+
+핵심 데이터:
+   - fund_q, px_wide, px_m, ret_1m
+   - mktcap_m, mktcap_long
+   - regime_m
+
+신호:
+   - value_filter, catalyst_df
+   - signal_df, final_signal
+
+파라미터:
+   - LAG_DAYS = 45 (기본, Recovery_Late는 30일)
+   - TOP_N = 30
+   - VALUE_FILTER_PCT = 0.5
+
+유틸:
+   - winsorize(), zscore_by_date()
+
+=============================================================================
+[관련 파일]
+=============================================================================
+
+   02_Factor_04_A_integrated.ipynb
+      - A-1 (단순 저평가) 테스트 → 탈락
+
+   01_DataLoader_Macro.ipynb
+      - 레짐 분류 (regime_v2, regime_macro 등)
+
+=============================================================================
+
+
+# =============================================================================
+# 02_D.ipynb — IPYNB 요약용
+# =============================================================================
+"""
+=============================================================================
+📁 02_D.ipynb 요약
+=============================================================================
+
+[노트북 목적]
+D팩터 (모멘텀) 검증 — 추세 지속 가설 테스트
+
+[테스트한 가설]
+- D-1: 추세 지속 (단순 모멘텀) → 조건부 유효
+- D-2: 실적 기반 모멘텀 → 생략 (A팩터와 상관 문제)
+- D-3: 변동성 조정 모멘텀 → 조건부 유효 (Neutral 한정)
+- D-4: 하방 방어형 모멘텀 → 폐기
+
+=============================================================================
+[셀 구조]
+=============================================================================
+
+셀 1: 환경 + 유틸
+   - QP2_ROOT, PATHS, calc_perf(), calc_tstat()
+   - winsorize(), zscore_by_date()
+
+셀 2: 데이터 로드
+   - px_wide, px_m, ret_1m (467종목, 152개월)
+   - 분석 기간: 2013-06-30 ~ 2026-01-31
+
+셀 3: 모멘텀 신호 생성
+   - MOM_3_1, MOM_6_0, MOM_6_1, MOM_12_0, MOM_12_1
+
+셀 4: 전체 기간 백테스트
+   - MOM_6_0 1위 (Sharpe 1.233, t=1.989)
+
+셀 4-1: 결과 해석 (주석)
+
+셀 5: 레짐별 백테스트 (regime_v2 기준)
+   - 유효 레짐: Neutral, Contraction
+   - 무효 레짐: Recovery_Early, Recovery_Late, Expansion, Peak
+
+셀 5-1: 레짐별 결과 해석 (주석)
+셀 5-2: Expansion BM 압승 원인 분석 (주석)
+
+셀 7: Lookback 민감도 테스트
+   - Neutral: MOM_6_0 최적
+   - Contraction: MOM_12_1 최적
+
+셀 7-1: Lookback 결과 해석 (주석)
+셀 7-2: D-2 생략 논거 (주석)
+
+셀 8: D-3 변동성 조정 모멘텀
+   - MOM_6_0 / VOL_6M (Sharpe-like ratio)
+   - Neutral: 개선 (2.252 → 2.471)
+   - Contraction: 악화 (0.491 → -0.018)
+
+셀 8-1: D-3 결과 해석 (주석)
+
+셀 9: D-4 하방 방어형 모멘텀
+   - MOM_6_0 / Downside_VOL (Sortino-like ratio)
+   - 유효 레짐에서 1등 못 함 → 폐기
+
+셀 9-1: D-4 결과 해석 (주석)
+셀 10: D팩터 최종 결론 (주석)
+
+=============================================================================
+[핵심 결과]
+=============================================================================
+
+레짐별 최적 전략:
+
+| 레짐          | 사용 | 전략 | Lookback       | Sharpe |
+|---------------|------|------|----------------|--------|
+| 0_Neutral     | O    | D-3  | MOM_6_0 / VOL  | 2.471  |
+| 3_Contraction | O    | D-1  | MOM_12_1       | 0.896  |
+| 그 외         | X    | -    | -              | -      |
+
+=============================================================================
+[A팩터 vs D팩터 비교]
+=============================================================================
+
+| 레짐             | A (Value×Catalyst) | D (Momentum) | 권장             |
+|------------------|--------------------|--------------|--------------------|
+| 0_Neutral        | WIN                | WIN (D-3)    | 둘 다 비중         |
+| 3_Contraction    | LOSE               | WIN (D-1)    | D만 비중           |
+| 4_Recovery_Late  | WIN                | LOSE         | A만 비중           |
+| 5_Expansion      | LOSE               | LOSE         | EW (팩터 비중 0)   |
+
+=============================================================================
+[핵심 인사이트]
+=============================================================================
+
+1. 모멘텀은 "추세장에서 유리하다"는 통설과 다름
+   - 확장기(상승 추세): BM한테 짐
+   - 횡보장(Neutral): 압승
+   - 하락장(Contraction): 방어 효과
+
+2. Lookback은 레짐마다 달라야 함
+   - Neutral: 단기 (6개월, skip 없음)
+   - Contraction: 장기 (12개월, skip 1개월)
+
+3. 변동성 조정은 횡보장에서만 유효
+   - Neutral: D-3 > D-1
+   - Contraction: D-1 > D-3
+
+4. A팩터와 상호보완적
+   - 유효 레짐이 다름 → 멀티팩터 분산 효과 기대
+
+=============================================================================
+[변수명 목록 — 다음 대화창 유지]
+=============================================================================
+
+데이터:
+   - px_wide, px_m, ret_1m: 주가/수익률
+   - regime_m: 레짐 데이터 (regime_v2 사용)
+   - ew_ret: EW 벤치마크
+
+모멘텀 신호:
+   - mom_signals: dict (MOM_3_1, MOM_6_0, MOM_6_1, MOM_12_0, MOM_12_1)
+   - mom_vol_adj: D-3 변동성 조정 신호
+   - vol_6m: 6개월 변동성
+
+파라미터:
+   - TOP_N = 30
+   - REGIME_COL = "regime_v2"
+
+유틸:
+   - calc_perf(), calc_tstat()
+   - backtest_momentum(), backtest_by_regime()
+
+=============================================================================
+[관련 파일]
+=============================================================================
+
+   02_A.ipynb
+      - A팩터 (Value×Catalyst) 검증
+      - 유효 레짐: Neutral, Recovery_Late
+
+   01_DataLoader_Macro.ipynb
+      - 레짐 분류 (regime_v2)
+      - data/interim/regime_indicators_combined.parquet
+
+=============================================================================
+"""
+print("IPYNB 요약 작성 완료")
+
+
+
+=============================================================================
+📁 04_MachineLearning_Fail_limitedData.ipynb 요약
+작성 시점: 2026-02-02 약 14:00 KST
+=============================================================================
+
+[노트북 목적]
+Finnhub API + FinBERT를 이용한 뉴스 감성 분석 파이프라인 구축 시도
+→ 결론: 데이터 부족 + API 한계로 실패, GDELT로 전환
+
+=============================================================================
+[셀 구조]
+=============================================================================
+
+셀 1: 환경 설정
+   - QP2_ROOT, PATHS 로드
+   - Finnhub API 키 설정 (d5u2mfpr01qtjet1q8bgd5u2mfpr01qtjet1q8c0)
+
+셀 2: Finnhub 뉴스 API 테스트
+   - 엔드포인트: /company-news
+   - AAPL 1개월치 뉴스 수집 테스트
+
+셀 3: 뉴스 데이터 구조 확인
+   - headline, summary, source, url, datetime 필드 확인
+   - summary가 잘려서 오는 경우 발견
+
+셀 4: FinBERT 설치 및 로드
+   - transformers 라이브러리 사용
+   - ProsusAI/finbert 모델 로드
+
+셀 5: FinBERT 감성 분석 함수 구현
+   - analyze_sentiment_full(text) → direction, confidence, positive/negative/neutral
+
+셀 6: 정확도 테스트 (수동 검증)
+   - 반전 표현 테스트: "Pares Losses", "Falls less than expected" 등
+   - 결과: 62% 정확도 — 문맥 이해 부족
+
+셀 7: 전체 뉴스 감성 분석 실행
+   - S&P500 전 종목 뉴스 수집 + 분석
+   - 산출물: news_sentiment.parquet
+
+셀 8: 백테스트 (감성 → 수익률 예측력)
+   - direction vs ret_1d, ret_5d 상관관계 분석
+   - (이 셀에서 세션 종료됨)
+
+=============================================================================
+[핵심 발견 및 실패 원인]
+=============================================================================
+
+1. FinBERT 문맥 이해 한계
+   - "Pares Losses" → -0.93 (실제: 긍정적, 손실 회복 중)
+   - "Falls less than expected" → -0.93 (실제: 긍정적)
+   - 강한 감성 단어("losses", "falls")에 과잉반응
+
+2. Finnhub API 한계
+   - 무료 플랜: 최근 1년치만 제공
+   - 유료 플랜: $50/월/마켓
+   - Summary가 잘려서 오는 경우 있음
+
+3. 데이터 양 부족
+   - 장기 백테스트 불가 (2024~2025만 가능)
+   - 통계적 유의성 확보 어려움
+
+=============================================================================
+[결론 및 다음 단계]
+=============================================================================
+
+결론: Finnhub + FinBERT 조합 → ❌ 실패
+
+다음 단계:
+- GDELT DOC API로 데이터 소스 변경
+- 장기 데이터 확보 (2022~2025, 4년치)
+- 티커 매칭 로직 직접 구현
+
+=============================================================================
+[관련 파일]
+=============================================================================
+
+   data/interim/news_sentiment.parquet (생성됨, but 불완전)
+
+=============================================================================
+=============================================================================
+
+
+
+
+=============================================================================
+📁 04_ML_GDELT.ipynb 요약
+작성 시점: 2026-02-02 약 21:00 KST
+=============================================================================
+
+[노트북 목적]
+GDELT DOC API를 이용한 S&P500 종목 뉴스 수집 파이프라인 구축
+뉴스 제목 기반 티커 매칭 → 추후 감성 분석 연계 예정
+
+=============================================================================
+[셀 구조]
+=============================================================================
+
+셀 1: 환경 설정
+   - QP2_ROOT, PATHS 로드
+   - sp500_universe.parquet 로드
+   - SECTOR_GROUPS 딕셔너리 생성 (11개 섹터, 503개 종목)
+
+셀 2: GDELT DOC API 테스트
+   - API 엔드포인트: https://api.gdeltproject.org/api/v2/doc/doc
+   - mode=artlist → 기사 제목 포함 응답 확인
+
+셀 3: 티커 매칭 함수 (match_ticker_from_title)
+   - 3단계 매칭 로직:
+     1) 티커 직접 매칭 (AAPL, MSFT 등)
+     2) 회사명 매칭 (Apple, Microsoft 등)
+     3) AMBIGUOUS 처리 (동음이의어)
+   - FINANCE_KEYWORDS: 금융 문맥 판별용 (113개)
+   - AMBIGUOUS_TICKERS: 동음이의어 규칙 (86개)
+
+셀 4: 회사명 → 티커 매핑 (NAME_TO_TICKER)
+   - sp500_universe에서 자동 생성
+   - 503개 종목 커버
+
+셀 5: AMBIGUOUS_TICKERS 초기 정의
+   - META, DAL, F, TGT, HD, BBY, POOL, KHC 등
+
+셀 6~16: 섹터별 테스트 및 AMBIGUOUS 확장
+   - Communication Services: DIS, NWSA, NWS, FOX, FOXA, TKO 등 17개
+   - Energy: BKR, MPC, PSX, DVN, WMB, TPL 등 6개
+   - Financials: V, STT, COF, BAC, ARES, ERIE 등 9개
+   - Health Care: WST, BSX, UHS, JCI 등 4개
+   - Industrials: UBER, AXON, OTIS, UNP 등 4개
+   - Information Technology: DELL, PANW, AMAT, FICO, AMD 등 5개
+   - Materials: MLM, STLD, DAY 등 3개
+   - Real Estate: O, PEG, DLR, PSA, EXR, VICI 등 6개
+   - Consumer Discretionary: (기존 처리됨)
+   - Consumer Staples: (기존 처리됨)
+   - Utilities: DUK, D, SO, PCG, XEL, NEE 등 7개
+
+셀 16-5: 대형주/일반어 AMBIGUOUS 강화
+   - AAPL, AMZN, TSLA, GOOGL, GOOG 등 21개 추가 강화
+   - 오염 방지용 부정 키워드 확장
+
+셀 17: GDELT 수집 코드 (미실행)
+   - 병렬 4개 ThreadPoolExecutor
+   - 체크포인트 기반 중단/재개
+   - 예상 소요: 5~6시간 (503종목 × 4년)
+
+=============================================================================
+[핵심 데이터 구조]
+=============================================================================
+
+FINANCE_KEYWORDS (113개):
+   stock, shares, investor, earnings, revenue, profit, dividend,
+   nasdaq, nyse, s&p, dow, market cap, ipo, sec, ceo, cfo,
+   quarterly, annual report, guidance, forecast, analyst,
+   upgrade, downgrade, buy, sell, hold, target price,
+   renewable, solar, wind, nuclear, utility, power, grid,
+   drug, fda, vaccine, delivery, freight, orders 등
+
+AMBIGUOUS_TICKERS (86개):
+   'META': {'positive': ['meta platforms', 'facebook', 'zuckerberg'],
+            'negative': ['meta analysis', 'meta study']},
+   'DAL': {'positive': ['delta air', 'airline', 'flight'],
+           'negative': ['delta variant', 'delta covid']},
+   'AAPL': {'positive': ['apple stock', 'iphone', 'tim cook'],
+            'negative': ['apple pie', 'apple fruit', 'apple orchard']},
+   'AMZN': {'positive': ['amazon stock', 'aws', 'bezos'],
+            'negative': ['amazon river', 'amazon rainforest']},
+   ... 등
+
+=============================================================================
+[GDELT 데이터 소스 정리]
+=============================================================================
+
+| 소스              | 직접 다운로드 | 제목 포함 |
+|-------------------|---------------|-----------|
+| GKG 1.0 (CSV)     | ✅ Yes        | ❌ No     |
+| GKG 2.0           | ❌ BigQuery만 | ✅ Yes    |
+| DOC API (artlist) | N/A           | ✅ Yes    |
+
+→ DOC API가 유일한 제목 포함 + 직접 접근 가능 경로
+
+=============================================================================
+[테스트 결과 요약]
+=============================================================================
+
+| 섹터                   | 정확도 |
+|------------------------|--------|
+| Communication Services | 95%    |
+| Energy                 | 100%   |
+| Financials             | 100%   |
+| Health Care            | 100%   |
+| Industrials            | 100%   |
+| Information Technology | 100%   |
+| Materials              | 100%   |
+| Real Estate            | 100%   |
+| Consumer Discretionary | 100%   |
+| Consumer Staples       | 100%   |
+| Utilities              | 89%    |
+|------------------------|--------|
+| 평균                   | ~98%   |
+
+=============================================================================
+[다음 단계]
+=============================================================================
+
+1. 셀 17 실행 (GDELT 뉴스 수집, 5~6시간)
+   - 산출물: data/raw/gdelt/news_all.parquet
+
+2. 감성 분석 (FinBERT 또는 VADER)
+   - 제목 기반 sentiment score 계산
+
+3. 팩터 생성
+   - 뉴스 빈도, 감성 점수 → 팩터화
+   - 기존 A, D 팩터와 결합 테스트
+
+=============================================================================
+[변수명 목록 — 다음 대화창 유지]
+=============================================================================
+
+핵심 데이터:
+   - SECTOR_GROUPS: 섹터별 종목 딕셔너리
+   - NAME_TO_TICKER: 회사명 → 티커 매핑
+   - AMBIGUOUS_TICKERS: 동음이의어 규칙 (86개)
+   - FINANCE_KEYWORDS: 금융 키워드 셋 (113개)
+
+함수:
+   - match_ticker_from_title(title): 제목 → 티커 매칭
+   - collect_ticker_news(ticker, start, end): 단일 종목 뉴스 수집
+
+경로:
+   - GDELT_DIR = RAW_DIR / "gdelt"
+   - CHECKPOINT_PATH = GDELT_DIR / "checkpoint.json"
+
+=============================================================================
+[파일 상태]
+=============================================================================
+
+상태: 수집 준비 완료, 실행 대기
+예상 산출물:
+   - data/raw/gdelt/news_all.parquet (전체 뉴스)
+   - data/raw/gdelt/checkpoint.json (진행 상황)
+
+=============================================================================

@@ -1,0 +1,27 @@
+=== FITB 모든 Income/Revenue 관련 태그 ===
+
+FinancingReceivableNonaccrualInterestIncome: 7 quarterly records
+ImpairedFinancingReceivableInterestIncomeAccrualMethod: 89 quarterly records
+IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments: 124 quarterly records
+InterestAndDebtExpense: 28 quarterly records
+InterestAndDividendIncomeOperating: 168 quarterly records
+InterestAndDividendIncomeSecurities: 168 quarterly records
+InterestAndFeeIncomeLoansAndLeases: 168 quarterly records
+InterestExpense: 150 quarterly records
+InterestExpenseDeposits: 168 quarterly records
+InterestExpenseFederalFundsPurchased: 95 quarterly records
+InterestExpenseLongTermDebt: 168 quarterly records
+InterestExpenseOperating: 18 quarterly records
+InterestExpenseOtherShortTermBorrowings: 60 quarterly records
+InterestExpenseShortTermBorrowings: 106 quarterly records
+InterestIncomeExpenseAfterProvisionForLoanLoss: 168 quarterly records
+InterestIncomeExpenseNet: 168 quarterly records
+InterestRevenueExpense: 20 quarterly records
+InterestRevenueExpenseNet: 16 quarterly records
+NoninterestExpense: 168 quarterly records
+NoninterestIncome: 168 quarterly records
+NoninterestIncomeOtherOperatingIncome: 168 quarterly records
+OtherInterestAndDividendIncome: 166 quarterly records
+OtherNoninterestExpense: 168 quarterly records
+RevenueFromContractWithCustomerIncludingAssessedTax: 64 quarterly records
+SegmentReportingInformationInterestIncomeExpenseNet: 8 quarterly records

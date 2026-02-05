@@ -1,0 +1,9 @@
+.venv/
+data/
+*.parquet
+*.zip
+*.log
+.env
+API_Key.txt
+__pycache__/
+.ipynb_checkpoints/

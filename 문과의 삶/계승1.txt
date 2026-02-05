@@ -1,0 +1,44 @@
+📌 대화창 4 이관 요약 (02_Factor_04 전용)
+현재 작업 중인 노트북
+C:\QP2\notebooks\02_Factor_04_A_integrated.ipynb
+
+완료된 셀 (1~4)
+셀 1: 환경/경로/유틸
+
+QP2_ROOT, PATHS, winsorize(), zscore_by_date(), map_fy_to_effective_date()
+LAG_DAYS = 180
+
+셀 2: 데이터 로드
+
+px_wide, px_m, ret_1m, fund_a, mktcap_m, common_me
+주의: 원본 parquet에서 date가 컬럼이라 set_index("date") 필요했음
+
+셀 3: Value 신호
+
+val: DataFrame (date, ticker, bm, value_z)
+56,792 rows, 386 tickers, 200 dates
+
+셀 4: 속도별 Catalyst
+
+cat_speed_panel: DataFrame (date, ticker, mid_cat_z, slow_cat_z, total_cat_z)
+82,720 rows, 500 tickers
+가중치: fast=0.0, mid=0.4, slow=0.6 (fast 데이터 없어서 0)
+
+
+남은 셀 (5~8) 구조
+셀내용비고5백테스트 버전 A (장기, fast=0)2009~현재 전체6Catalyst에 fast 포함 버전fast_catalyst.parquet 로드7백테스트 버전 B (최근, fast 포함)2024-11~현재만8요약 + 결론
+
+버전 A vs B 설계 이유
+
+버전 A (fast=0): 장기 백테스트, 가설 구조 검증용
+버전 B (fast 포함): 최근 1.5년만, 완전체 테스트 (⚠️ 표본 작음)
+
+
+다음 액션
+셀 5 코드 실행 — 이전 대화창에서 코드 이미 제공함, 그대로 붙여넣고 실행
+
+Finnhub Fast Catalyst 한계
+
+기간: 2024-09-30 ~ 2025-12-31 (약 1.5년)
+무료 API 한계, 장기 백테스트 불가
+버전 B에서만 사용

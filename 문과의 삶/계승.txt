@@ -1,0 +1,435 @@
+📌 데이터-1 채팅방 요약 (QP2 퀀트 프로젝트 1회차)
+
+이 채팅방은 “데이터-1”이다.
+이후 이어지는 채팅방은 데이터-2, 데이터-3 … 순으로 이어간다.
+각 채팅방은 이전 채팅방의 요약을 전제로 진행한다.
+
+0. 사용자 요구사항 (항상 지켜야 할 규칙)
+
+모든 노트북 셀에는 목적/역할이 명확한 주석을 달 것
+
+# 목적:
+
+# 산출물:
+
+# 주의: 형태 선호
+
+셀 단위로 단계적으로 진행
+
+한 셀 끝나면 “다음 셀”로 이동
+
+경로/환경은 단일 진실(SSOT) 원칙
+
+하드코딩 금지
+
+.env + QP2_ROOT 기준
+
+중단·재개 가능한 구조 선호
+
+다운로드 작업은 재실행 안전해야 함
+
+실무 퀀트 파이프라인 기준
+
+임시 해킹 코드 ❌
+
+재현성/확장성 ⭕
+
+불필요한 설명 최소화
+
+핵심 로직과 판단 기준 위주
+
+코드 에러 수정 시 규칙
+
+어떤 셀에 수정이 발생하면, 수정 후 그 “해당 셀 전체 코드”를 통째로 제공할 것
+(부분 패치/조각 제공 금지)
+
+대화창 이관/교체 시 변수명 일관성 규칙
+
+대화창에서 작성한 모든 코드를 바탕으로, 기억해야 하는 핵심 “변수 이름 목록”을 요약에 포함할 것
+
+새 채팅으로 넘어가도 변수명을 임의로 새로 만들지 말 것
+
+필요 시 “변수명 매핑표(기존→새)”를 명시적으로 제공할 것
+
+만약 에러 메세지가 아닌 이전에 제공한 코드를 다시한번 입력한 경우 짧게 '컨트롤 C 문제가 발생'했다고 답장
+
+1. 프로젝트 목적
+
+미국 주식(S&P 500) 전체 유니버스
+
+Yahoo Finance 가격 데이터 + SEC EDGAR(XBRL) 재무 데이터
+
+퀀트/리서치/백테스트에 바로 쓰는 표준 패널 데이터 구축
+
+2. 최종 폴더 / 환경 상태 (SSOT)
+✅ 루트 (목표/권장)
+C:\QP2
+
+📁 디렉토리 구조(목표)
+C:\QP2
+ ├─ data
+ │   ├─ raw
+ │   │   └─ yahoo        ← Yahoo 일봉 원시 데이터 (503개 parquet)
+ │   ├─ interim          ← 패널/중간 산출물
+ │   └─ meta             ← 메타데이터(유니버스, 매핑)
+ ├─ notebooks
+ │   └─ 01_bootstrap.ipynb
+ ├─ src
+ ├─ .env
+ └─ .venv
+
+
+⚠️ 과거 루트 C:\Users\이노\Documents\QP2에서 실행된 기록이 남아 있음
+로그 상 QP2_ROOT = C:\Users\이노\Documents\QP2로 잡혀 실행된 적 있음
+→ Yahoo 데이터도 과거 루트에 생성됨
+→ 현재는 해당 데이터를 C:\QP2\data\raw\yahoo로 복사/이관하여 정리하는 흐름
+
+3. Python / 실행 환경
+
+OS: Windows
+
+Python: 3.14.2
+
+venv: C:\QP2\.venv
+
+VS Code:
+
+Interpreter: C:\QP2\.venv\Scripts\python.exe
+
+Jupyter 커널도 동일 venv 사용
+
+핵심 원칙
+
+터미널 / VS Code / Jupyter 커널이 동일한 Python을 써야 함
+
+4. 주요 문제와 해결 이력 (재발 방지)
+❌ 문제 A: Yahoo 503/503 실패
+
+원인: 한글 경로 + curl/certifi SSL 검증 경로 문제
+
+해결: 영문 루트 C:\QP2로 이전 + venv 재생성
+
+결과: Yahoo 다운로드 정상화
+
+❌ 문제 B: Wikipedia S&P500 403
+
+원인: pd.read_html(url) 직호출 차단
+
+해결: requests + User-Agent로 HTML 수동 수집 후 pd.read_html(StringIO(html))
+
+❌ 문제 C: venv 활성화/셸 혼선
+
+원인: PowerShell이 아닌 셸에서 Activate.ps1 실행 시도 / REPL에서 pip 실행
+
+해결: VS Code 터미널을 PowerShell로 고정 + (.venv) 확인 후 pip 실행
+
+5. 01_bootstrap.ipynb 진행 상태
+✅ Cell 1 — Bootstrap (완료)
+
+.env 로드
+
+SSOT 경로 정의: QP2_ROOT, DATA_DIR, RAW_DIR, INTERIM_DIR, PROCESSED_DIR, META_DIR
+
+설정값 로드: SEC_USER_AGENT, SEC_RATE_LIMIT_PER_SEC, HTTP_TIMEOUT
+
+로깅: logger
+
+스냅샷 저장: data/meta/last_run_snapshot.json
+
+저장 함수: save_parquet(df, path)
+
+✅ Cell 2 — SEC ticker → CIK 매핑 (완료)
+
+소스: https://www.sec.gov/files/company_tickers.json
+
+산출물: data/meta/sec_ticker_cik.parquet
+
+결과: 약 10,301 rows (로그 기준)
+
+재시도/UA 포함 버전 사용
+
+✅ Cell 3 — S&P500 유니버스 + SEC 매칭 (완료)
+
+Wikipedia 403 우회(UA) 버전 사용
+
+산출물:
+
+data/meta/sp500_universe.parquet (503 rows, match_rate=1.0)
+
+data/meta/sp500_unmatched.parquet (0 rows)
+
+✅ Cell 4 — Yahoo Finance 가격 다운로드 (완료)
+
+503 종목 전부 성공, Failed=0
+
+산출물: data/raw/yahoo/{TICKER}.parquet
+
+6. 현재 데이터 위치 (확정 목표)
+
+정식 위치(앞으로의 기준):
+
+C:\QP2\data\raw\yahoo\
+
+
+과거 루트에서 찾은 파일들은 복사/붙여넣기 또는 robocopy로 이관해도 코드 꼬임 없음
+(parquet는 경로 의존 없고, 로더는 SSOT 경로만 본다)
+
+7. 변수 이름 목록 (이관 시 반드시 유지)
+
+새 채팅(데이터-2)에서도 아래 변수명은 그대로 사용할 것. 임의 변경 금지.
+
+(A) Cell 1에서 정의되는 SSOT/설정/유틸
+
+QP2_ROOT
+
+DATA_DIR
+
+RAW_DIR
+
+INTERIM_DIR
+
+PROCESSED_DIR
+
+META_DIR
+
+SEC_USER_AGENT
+
+SEC_RATE_LIMIT_PER_SEC
+
+HTTP_TIMEOUT
+
+logger
+
+save_parquet
+
+(B) Cell 2 SEC 매핑 관련
+
+SEC_TICKER_CIK_URL
+
+OUT_PATH (SEC ticker map 저장 경로)
+
+sec_map
+
+(C) Cell 3 유니버스 관련
+
+SP500_URL
+
+OUT_UNIVERSE
+
+OUT_UNMATCHED
+
+master
+
+unmatched
+
+to_yahoo_ticker
+
+(D) Cell 4 Yahoo 다운로드 관련
+
+YAHOO_DIR 또는 YAHOO_OUT_DIR (프로젝트 내에서 하나로 통일 권장: YAHOO_DIR)
+
+FAILED_PATH
+
+failed
+
+failed_df
+
+download_one / download_one_ticker (하나로 통일 권장: download_one)
+
+⚠️ 데이터-2에서는 혼선을 막기 위해
+Yahoo 폴더 변수명은 YAHOO_DIR로 통일,
+다운로드 함수명은 download_one으로 통일하는 것이 바람직함.
+(단, 통일을 한다면 “변수명 매핑표”를 명시하고, 이후 전 셀에서 일관 적용)
+
+8. 다음 채팅방(데이터-2)에서 할 일
+▶️ Cell 5 — 패널 생성 (가격 파일 결합)
+
+종목별 parquet(503개) → long 패널
+
+Adj Close 기준 wide 패널
+
+산출물:
+
+data/interim/yahoo_prices_long.parquet
+
+data/interim/yahoo_adjclose_wide.parquet
+
+▶️ 이후 로드맵
+
+일간/월간 수익률 계산
+
+리밸런싱 캘린더 생성
+
+SEC EDGAR XBRL(companyfacts) 수집
+
+가격 + 재무 결합 패널
+
+🔑 핵심 한 줄
+
+데이터-1 종료 시점: S&P500 전 종목 가격 데이터 확보 완료(503/503), 유니버스–CIK 매칭 100% 완료, 다음은 Cell 5(패널 생성)부터.
+
+
+
+
+데이터-2 채팅방 요약
+📌 프로젝트 상태 요약 + 다음 대화창 스타트 지침 (GPT용)
+0. 프로젝트 개요
+
+목적: 퀀트 투자 모델 구축 연습 → 실전 설계
+
+현재는 파이프라인을 명확히 분리하는 단계
+
+1. 파일 구조 확정 (SSOT)
+📁 02_factor_lab_mom.ipynb
+
+역할: 팩터 단독 검증 실험실 (연습용)
+
+사용 데이터:
+
+Yahoo Finance Adj Close (주가 only)
+
+Universe:
+
+현재 기준 S&P500 (503종목)
+
+Survivorship bias 허용
+
+기간:
+
+2013-06-19 이후
+
+수행 내용:
+
+EW(Equal Weight) benchmark 구성
+
+12–1 Momentum 팩터 정의
+
+Gross / Net 수익률 분리
+
+누적수익률, Drawdown 시각화
+
+성과 요약 (CAGR, Sharpe, MaxDD)
+
+통계적 유의성 검정 (t-stat, IR)
+
+결과 요약:
+
+MOM Net은 EW 대비 성과 우위는 보였음
+
+그러나:
+
+t-stat ≈ 0.9
+
+IR ≈ 0.26
+
+⇒ 통계적 유의성 기준 미달 → 탈락
+
+결론:
+
+모멘텀 팩터 자체를 부정한 것이 아님
+
+해당 구현(12–1 / 월간 / 단일팩터)이 통과 못 한 것
+
+이 파일은 연습 종료, 더 이상 구조 변경 없음
+
+📁 01_fundamental_loader.ipynb ← 다음 대화에서 새로 만들 것
+
+역할: 데이터 수집 레이어 (생각 금지 구간)
+
+목적:
+
+EDGAR 재무지표 수집
+
+주가 데이터와 merge 가능한 형태로 정규화
+
+반드시 지킬 원칙:
+
+❌ 팩터 계산 금지
+
+❌ 백테스트 금지
+
+❌ 성과 평가 금지
+
+✅ 수집, 정합성 체크, 저장만 수행
+
+대상:
+
+S&P500 기업 (동일 universe)
+
+연간 또는 분기 재무제표
+
+산출물:
+
+data/raw/sec/
+
+data/interim/fundamentals_*
+
+2. 데이터 현황 (중요)
+✅ 이미 확보된 것
+
+Yahoo Finance 주가 데이터
+
+일간 / 월간 Adj Close
+
+일간 / 월간 수익률
+
+S&P500, 2013-06-19 이후
+
+추가 수집 불필요
+
+❌ 아직 없는 것
+
+EDGAR 재무지표
+
+Income Statement
+
+Balance Sheet
+
+Cash Flow
+
+3. 개념적 정리 (중요 인식)
+
+지금까지 한 모멘텀 실험은:
+
+02_factor_lab_mom.ipynb 연습용
+
+파이프라인 전체를 몸으로 익히기 위한 단계
+
+올바른 구조는:
+
+01: 데이터 수집 (주가 + 재무)
+
+02: 팩터 단독 검증
+
+03: 멀티팩터 모델 + 실전 백테스트
+
+4. 다음 대화창에서 GPT가 해야 할 일
+🎯 즉시 수행할 작업
+
+01_fundamental_loader.ipynb 설계
+
+EDGAR 접근 방식 결정
+
+어떤 재무지표부터 받을지 결정
+
+연간 vs 분기 선택
+
+데이터 구조 설계
+
+주가와 병합 가능한 key
+
+시점 정합성 (look-ahead 방지)
+
+⚠️ 주의사항
+
+02에서 했던 팩터/백테스트 로직을 절대 다시 끌어오지 말 것
+
+01은 “데이터 파이프라인” 역할만 수행
+
+5. 한 줄 요약 (GPT용)
+
+이전 대화에서는 02_factor_lab_mom.ipynb에서
+Yahoo 주가 데이터만으로 모멘텀 팩터를 단독 검증했고,
+통계적 유의성 부족으로 연습을 종료했다.
+다음 대화에서는 01_fundamental_loader.ipynb를 새로 만들어
+EDGAR 재무지표 수집 파이프라인을 설계·구현해야 한다.

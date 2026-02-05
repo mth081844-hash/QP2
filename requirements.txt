@@ -1,0 +1,15 @@
+pandas
+numpy
+pyarrow
+python-dotenv
+requests
+httpx
+tenacity
+tqdm
+yfinance
+pandas-market-calendars
+lxml
+beautifulsoup4
+sec-edgar-downloader
+arelle-release
+pytest
